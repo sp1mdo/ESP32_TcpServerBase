@@ -1,0 +1,9 @@
+build/*
+.vscode/
+.devcontainer/
+sdkconfig
+sdkconfig.old
+sdkconfig.*
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake

@@ -17,7 +17,7 @@ uint16_t holdingRegisters[100] = {0};
 uint16_t inputRegisters[100] = {0};
 bool coils[8] = {true, false, false, false, false, false, false, true};
 
-void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
+void ModbusServer::ProcessRx(uint8_t *data, size_t len)
 {
     std::unique_ptr<modbus_query_t> query = parse_modbus_tcp_raw_data((uint8_t *)data, len);
     if (query == NULL)
@@ -56,7 +56,6 @@ void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
     {
     case READ_COILS:
     {
-        // printf("Read Coils\n");
         reply->byte_count = (uint8_t)(query->word_count / 8);
         uint8_t *offset8 = (uint8_t *)offset;
         memset(offset, 0, reply->byte_count);
@@ -70,7 +69,6 @@ void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
         break;
     }
     case READ_HOLDING_REGISTERS:
-
         reply->byte_count = (uint8_t)(2 * query->word_count);
         ESP_LOGI(TAG, "read_holding_registers(address: %u-%u)\n", (query->start_addr), (query->start_addr) + reply->byte_count / 2);
         for (size_t i = 0; i < reply->byte_count / sizeof(uint16_t); i++)
@@ -100,7 +98,6 @@ void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
         break;
 
     case WRITE_SINGLE_REGISTER:
-
         holdingRegisters[query->start_addr] = htons(registers[0]);
         memcpy((void *)send_buf, (void *)data, 12);
         reply->byte_count = 3;
@@ -130,15 +127,15 @@ void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
     }
 
     size_t to_write = sizeof(modbus_reply_t) + reply->byte_count + tmp_bytes;
-    m_Server->Send(send_buf, to_write);
+    Send(send_buf, to_write);
 
     delete[] send_buf;
 }
 
-std::unique_ptr<modbus_query_t> ModbusApplication::parse_modbus_tcp_raw_data(const uint8_t *data, size_t len)
+std::unique_ptr<modbus_query_t> ModbusServer::parse_modbus_tcp_raw_data(const uint8_t *data, size_t len)
 {
     auto query = std::unique_ptr<modbus_query_t>(new modbus_query_t); // Safer allocation
-    query->transaction_id = data[1] + (data[0] << 8);
+    query->transaction_id = ntohs(*(uint16_t *)&data[0]);
     query->protocol_id = ntohs(*(uint16_t *)&data[2]);
     query->length = ntohs(*(uint16_t *)&data[4]);
     query->unit_id = data[6];

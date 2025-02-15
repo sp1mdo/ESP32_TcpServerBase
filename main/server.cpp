@@ -35,7 +35,7 @@ void SocketServer::Listen()
     int keepIdle = KEEPALIVE_IDLE;
     int keepInterval = KEEPALIVE_INTERVAL;
     int keepCount = KEEPALIVE_COUNT;
-    struct sockaddr_storage dest_addr;
+    
     uint16_t port;
 
     if (addr_family == AF_INET)
@@ -48,24 +48,24 @@ void SocketServer::Listen()
         ip_protocol = IPPROTO_IP;
     }
 
-    int listen_sock = socket(addr_family, SOCK_STREAM, ip_protocol);
-    if (listen_sock < 0)
+    m_ServerSock = socket(addr_family, SOCK_STREAM, ip_protocol);
+    if (m_ServerSock < 0)
     {
         ESP_LOGE(TAG, "Unable to create socket: errno %d", errno);
         vTaskDelete(NULL);
         return;
     }
     int opt = 1;
-    setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    setsockopt(m_ServerSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 #if defined(CONFIG_EXAMPLE_IPV4) && defined(CONFIG_EXAMPLE_IPV6)
     // Note that by default IPV6 binds to both protocols, it is must be disabled
     // if both protocols used at the same time (used in CI)
-    setsockopt(listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
+    setsockopt(m_ServerSock, IPPROTO_IPV6, IPV6_V6ONLY, &opt, sizeof(opt));
 #endif
 
     ESP_LOGI(TAG, "Socket created");
 
-    int err = bind(listen_sock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
+    int err = bind(m_ServerSock, (struct sockaddr *)&dest_addr, sizeof(dest_addr));
     if (err != 0)
     {
         ESP_LOGE(TAG, "Socket unable to bind: errno %d", errno);
@@ -74,7 +74,7 @@ void SocketServer::Listen()
     }
     ESP_LOGI(TAG, "Socket bound, port %d", port);
 
-    err = listen(listen_sock, 1);
+    err = listen(m_ServerSock, 1);
     if (err != 0)
     {
         ESP_LOGE(TAG, "Error occurred during listen: errno %d", errno);
@@ -83,12 +83,9 @@ void SocketServer::Listen()
 
     while (1)
     {
-
         ESP_LOGI(TAG, "Socket listening");
-
-        struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
         socklen_t addr_len = sizeof(source_addr);
-        m_Sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
+        m_Sock = accept(m_ServerSock, (struct sockaddr *)&source_addr, &addr_len);
         if (m_Sock < 0)
         {
             ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);
@@ -127,7 +124,7 @@ void SocketServer::Listen()
             {
     
                 ESP_LOGD(TAG, "Received %d bytes.", len);
-                m_Application.ProcessRx(rx_buffer, len);
+                ProcessRx(rx_buffer, len);
             }
         } while (len > 0);
         
@@ -137,26 +134,22 @@ void SocketServer::Listen()
     }
 
 CLEAN_UP:
-    close(listen_sock);
+    close(m_ServerSock);
     vTaskDelete(NULL);
 }
 
 void modbus_server_task(void *pvParameters)
 {
-    ModbusApplication MyModbusApplication{53};
-    SocketServer MyServer((int) pvParameters, MyModbusApplication);
-
-    MyServer.Listen();
+    ModbusServer MyModbusServer(53, (int) pvParameters);
+    MyModbusServer.Listen();
 
     vTaskDelete(NULL);
 }
 
 void echo_server_task(void *pvParameters)
 {
-    EchoApplication MyEchoApplication{};
-    SocketServer MyServer((int) pvParameters, MyEchoApplication);
-
-    MyServer.Listen();
+    EchoServer MyEchoServer((int) pvParameters);
+    MyEchoServer.Listen();
 
     vTaskDelete(NULL);
 }

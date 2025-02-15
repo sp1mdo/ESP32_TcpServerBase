@@ -7,12 +7,11 @@
 
 #include "server.h"
 
-class BaseApplication;
-
-class EchoApplication : public BaseApplication
+class EchoServer : public SocketServer
 {
 public:
-    EchoApplication() {};
+    EchoServer(uint16_t port) : SocketServer(port)
+    { }
     void ProcessRx(uint8_t *data, size_t len) override;
 };
 

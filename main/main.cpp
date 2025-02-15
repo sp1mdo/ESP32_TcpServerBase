@@ -109,9 +109,6 @@ static void event_handler(void *arg, esp_event_base_t event_base,
     }
 }
 
-
-
-
 void wifi_init_sta(void)
 {
     s_wifi_event_group = xEventGroupCreate();
@@ -181,14 +178,7 @@ void wifi_init_sta(void)
     vEventGroupDelete(s_wifi_event_group);
 }
 
-void temperatureRoutine(void)
-{
-    while (1)
-    {
-        vTaskDelay(100);
-        std::cout << "Hello from thread1" << std::endl;
-    }
-}
+
 extern "C" void app_main(void)
 {
     // Initialize NVS
@@ -200,11 +190,18 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
+  
+    esp_log_level_set("*", ESP_LOG_DEBUG);
+
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
 
-    xTaskCreate(tcp_server_task, "tcp_server502", 4096, (void *)502, 5, NULL);
-    xTaskCreate(tcp_server_task, "tcp_server503", 4096, (void *)503, 5, NULL);
-    std::thread t1(temperatureRoutine);
-    t1.join();
+    xTaskCreate(modbus_server_task, "tcp_server502", 4096, (void *)502, 5, NULL);
+    xTaskCreate(modbus_server_task, "tcp_server503", 4096, (void *)503, 5, NULL);
+    xTaskCreate(echo_server_task,   "tcp_server21", 4096, (void *)23, 5, NULL);
+
+    while(1)
+    {
+        vTaskDelay(100);
+    }
 }

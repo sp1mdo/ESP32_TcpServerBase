@@ -4,6 +4,9 @@
 #include <inttypes.h>
 #include <cstdlib>
 #include <memory>
+#include <map>
+
+#include "server.h"
 
 #define READ_COILS 1
 #define READ_DISCREETE_INPUTS 2
@@ -38,5 +41,23 @@ typedef struct modbus_reply_t
 
 std::unique_ptr<modbus_query_t> parse_modbus_tcp_raw_data(const uint8_t *data, size_t len);
 int tcp_server_recv(uint8_t *payload, size_t length, const int sock);
+
+class BaseApplication;
+
+class ModbusApplication : public BaseApplication
+{
+public:
+    ModbusApplication(uint8_t slave_id) : m_SlaveId(slave_id) {  };
+    void ProcessRx(uint8_t *data, size_t len) override;
+    //void Send(uint8_t *data, size_t len) override;
+
+    //std::map<uint16_t, uint16_t *> holdingRegisters;
+    //std::map<uint16_t, uint16_t *> inputRegisters;
+    
+
+private:
+    std::unique_ptr<modbus_query_t> parse_modbus_tcp_raw_data(const uint8_t *data, size_t len);
+    uint8_t m_SlaveId;
+};
 
 #endif

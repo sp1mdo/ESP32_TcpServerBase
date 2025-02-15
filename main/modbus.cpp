@@ -17,43 +17,27 @@ uint16_t holdingRegisters[100] = {0};
 uint16_t inputRegisters[100] = {0};
 bool coils[8] = {true, false, false, false, false, false, false, true};
 
-std::unique_ptr<modbus_query_t> parse_modbus_tcp_raw_data(const uint8_t *data, size_t len)
+void ModbusApplication::ProcessRx(uint8_t *data, size_t len)
 {
-    //modbus_query_t *query = (modbus_query_t *)malloc(sizeof(modbus_query_t));
-    auto query = std::unique_ptr<modbus_query_t>(new modbus_query_t); // Safer allocation
-    query->transaction_id = data[1] + (data[0] << 8);
-    query->protocol_id = ntohs(*(uint16_t *)&data[2]);
-    query->length = ntohs(*(uint16_t *)&data[4]);
-    query->unit_id = data[6];
-    query->function_code = data[7];
-    query->start_addr = ntohs(*(uint16_t *)&data[8]);
-    query->word_count = ntohs(*(uint16_t *)&data[10]);
-
-    return query;
-}
-
-int tcp_server_recv(uint8_t *payload, size_t length, const int sock)
-{
-    std::unique_ptr<modbus_query_t> query = parse_modbus_tcp_raw_data((uint8_t *)payload, length);
+    std::unique_ptr<modbus_query_t> query = parse_modbus_tcp_raw_data((uint8_t *)data, len);
     if (query == NULL)
     {
         ESP_LOGE(TAG, "query is NULL.\n");
-        return -1;
+        return;
     }
 
-    if (query->unit_id != 53)
+    if (query->unit_id != m_SlaveId)
     {
         ESP_LOGE(TAG, "other ID\n");
-        return -1;
+        return;
     }
 
-    uint16_t *registers = (uint16_t *)payload + 10;
-    //uint8_t *send_buf = (uint8_t *)malloc(12 + 2 * (query->word_count));
+    uint16_t *registers = (uint16_t *)data + 10;
     uint8_t *send_buf = new uint8_t[12 + sizeof(uint16_t) * (query->word_count)];
     if (send_buf == NULL)
     {
         ESP_LOGE(TAG, "send_buf is NULL.\n");
-        return -1;
+        return ;
     }
 
     modbus_reply_t *reply = (modbus_reply_t *)send_buf;
@@ -111,14 +95,14 @@ int tcp_server_recv(uint8_t *payload, size_t length, const int sock)
         break;
 
     case WRITE_SINGLE_COIL:
-        memcpy((void *)send_buf, (void *)payload, 12);
+        memcpy((void *)send_buf, (void *)data, 12);
         tmp_bytes = 3;
         break;
 
     case WRITE_SINGLE_REGISTER:
 
         holdingRegisters[query->start_addr] = htons(registers[0]);
-        memcpy((void *)send_buf, (void *)payload, 12);
+        memcpy((void *)send_buf, (void *)data, 12);
         reply->byte_count = 3;
         break;
 
@@ -133,11 +117,11 @@ int tcp_server_recv(uint8_t *payload, size_t length, const int sock)
         {
             if (query->start_addr + i < 100) // TODO reply invalid data address in such case
             {
-                holdingRegisters[query->start_addr + i] = ((uint8_t *)payload)[13 + sizeof(uint16_t) * i] * 256 + ((uint8_t *)payload)[14 + sizeof(uint16_t) * i];
+                holdingRegisters[query->start_addr + i] = ((uint8_t *)data)[13 + sizeof(uint16_t) * i] * 256 + ((uint8_t *)data)[14 + sizeof(uint16_t) * i];
             }
         }
 
-        memcpy((void *)send_buf, (void *)payload, 12);
+        memcpy((void *)send_buf, (void *)data, 12);
         reply->byte_count = 3;
         break;
 
@@ -146,18 +130,21 @@ int tcp_server_recv(uint8_t *payload, size_t length, const int sock)
     }
 
     size_t to_write = sizeof(modbus_reply_t) + reply->byte_count + tmp_bytes;
-    int len = to_write;
-    while (to_write > 0)
-    {
-        int written = send(sock, send_buf + (len - to_write), to_write, 0);
-        if (written < 0)
-        {
-            ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-        }
-        to_write -= written;
-    }
+    m_Server->Send(send_buf, to_write);
 
     delete[] send_buf;
+}
 
-    return ERR_OK;
+std::unique_ptr<modbus_query_t> ModbusApplication::parse_modbus_tcp_raw_data(const uint8_t *data, size_t len)
+{
+    auto query = std::unique_ptr<modbus_query_t>(new modbus_query_t); // Safer allocation
+    query->transaction_id = data[1] + (data[0] << 8);
+    query->protocol_id = ntohs(*(uint16_t *)&data[2]);
+    query->length = ntohs(*(uint16_t *)&data[4]);
+    query->unit_id = data[6];
+    query->function_code = data[7];
+    query->start_addr = ntohs(*(uint16_t *)&data[8]);
+    query->word_count = ntohs(*(uint16_t *)&data[10]);
+
+    return query;
 }

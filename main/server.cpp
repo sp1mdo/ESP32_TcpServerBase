@@ -6,9 +6,27 @@
 
 #include "server.h"
 #include "modbus.h"
+#include "echo.h"
+
 static const char *TAG = "server";
 
-void tcp_server_task(void *pvParameters)
+int SocketServer::Send(uint8_t* data, size_t len)
+{
+    size_t to_write = len;
+    int written = -1 ;
+    while (to_write > 0)
+    {
+        written = send(m_Sock, data + (len - to_write), to_write, 0);
+        if (written < 0)
+        {
+            ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+        }
+        to_write -= written;
+    }
+    return written;
+}
+
+void SocketServer::Listen()
 {
     char addr_str[128];
     int addr_family = (int)AF_INET;
@@ -25,7 +43,7 @@ void tcp_server_task(void *pvParameters)
         struct sockaddr_in *dest_addr_ip4 = (struct sockaddr_in *)&dest_addr;
         dest_addr_ip4->sin_addr.s_addr = htonl(INADDR_ANY);
         dest_addr_ip4->sin_family = AF_INET;
-        dest_addr_ip4->sin_port = htons((int)pvParameters);
+        dest_addr_ip4->sin_port = htons(m_Port);
         port = ntohs(dest_addr_ip4->sin_port);
         ip_protocol = IPPROTO_IP;
     }
@@ -70,18 +88,18 @@ void tcp_server_task(void *pvParameters)
 
         struct sockaddr_storage source_addr; // Large enough for both IPv4 or IPv6
         socklen_t addr_len = sizeof(source_addr);
-        int sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
-        if (sock < 0)
+        m_Sock = accept(listen_sock, (struct sockaddr *)&source_addr, &addr_len);
+        if (m_Sock < 0)
         {
             ESP_LOGE(TAG, "Unable to accept connection: errno %d", errno);
             break;
         }
 
         // Set tcp keepalive option
-        setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdle, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepInterval, sizeof(int));
-        setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
+        setsockopt(m_Sock, SOL_SOCKET, SO_KEEPALIVE, &keepAlive, sizeof(int));
+        setsockopt(m_Sock, IPPROTO_TCP, TCP_KEEPIDLE, &keepIdle, sizeof(int));
+        setsockopt(m_Sock, IPPROTO_TCP, TCP_KEEPINTVL, &keepInterval, sizeof(int));
+        setsockopt(m_Sock, IPPROTO_TCP, TCP_KEEPCNT, &keepCount, sizeof(int));
         // Convert ip address to string
         if (source_addr.ss_family == PF_INET)
         {
@@ -90,10 +108,32 @@ void tcp_server_task(void *pvParameters)
 
         ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
 
-        do_retransmit(sock);
-
-        shutdown(sock, 0);
-        close(sock);
+        
+        int len;
+        uint8_t rx_buffer[128];
+    
+        do
+        {
+            len = recv(m_Sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+            if (len < 0)
+            {
+                ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
+            }
+            else if (len == 0)
+            {
+                ESP_LOGW(TAG, "Connection closed");
+            }
+            else
+            {
+    
+                ESP_LOGD(TAG, "Received %d bytes.", len);
+                m_Application.ProcessRx(rx_buffer, len);
+            }
+        } while (len > 0);
+        
+        
+        shutdown(m_Sock, 0);
+        close(m_Sock);
     }
 
 CLEAN_UP:
@@ -101,29 +141,22 @@ CLEAN_UP:
     vTaskDelete(NULL);
 }
 
-
-void do_retransmit(const int sock)
+void modbus_server_task(void *pvParameters)
 {
-    int len;
-    uint8_t rx_buffer[128];
+    ModbusApplication MyModbusApplication{53};
+    SocketServer MyServer((int) pvParameters, MyModbusApplication);
 
-    do
-    {
-        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
-        if (len < 0)
-        {
-            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
-        }
-        else if (len == 0)
-        {
-            ESP_LOGW(TAG, "Connection closed");
-        }
-        else
-        {
+    MyServer.Listen();
 
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+    vTaskDelete(NULL);
+}
 
-            tcp_server_recv(rx_buffer, len, sock);
-        }
-    } while (len > 0);
+void echo_server_task(void *pvParameters)
+{
+    EchoApplication MyEchoApplication{};
+    SocketServer MyServer((int) pvParameters, MyEchoApplication);
+
+    MyServer.Listen();
+
+    vTaskDelete(NULL);
 }

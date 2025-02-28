@@ -10,18 +10,19 @@
 void modbus_server_task(void *pvParameters);
 void echo_server_task(void *pvParameters);
 
-class SocketServer
+class BaseTcpServer
 {
 public:
-    SocketServer(uint16_t port) : m_Port(port) { }
-    ~SocketServer()
+    BaseTcpServer(uint16_t port) : m_Port(port) { }
+    ~BaseTcpServer()
     {
         close(m_ServerSock);
     };
 
-    void Listen();
-    int Send(uint8_t *data, size_t len);
-    virtual void ProcessRx(uint8_t *data, size_t len) = 0;
+    void run();
+    int send(const int sock_fd, const uint8_t *data, size_t len);
+    virtual void processRx(const int sock_fd, const uint8_t *data, size_t len) = 0;  
+    virtual void sendWelcomeMessage(const int sock_fd) = 0 ;
 
 private:
     uint16_t m_Port;

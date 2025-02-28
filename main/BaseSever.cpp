@@ -4,19 +4,19 @@
 
 #include "esp_log.h"
 
-#include "server.h"
-#include "modbus.h"
-#include "echo.h"
+#include "BaseServer.hpp"
+#include "Modbus.hpp"
+#include "Telnet.hpp"
 
 static const char *TAG = "server";
 
-int SocketServer::Send(uint8_t* data, size_t len)
+int BaseTcpServer::send(const int sock_fd, const uint8_t* data, size_t len)
 {
     size_t to_write = len;
     int written = -1 ;
     while (to_write > 0)
     {
-        written = send(m_Sock, data + (len - to_write), to_write, 0);
+        written = ::send(sock_fd, data + (len - to_write), to_write, 0);
         if (written < 0)
         {
             ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
@@ -26,7 +26,7 @@ int SocketServer::Send(uint8_t* data, size_t len)
     return written;
 }
 
-void SocketServer::Listen()
+void BaseTcpServer::run()
 {
     char addr_str[128];
     int addr_family = (int)AF_INET;
@@ -105,7 +105,7 @@ void SocketServer::Listen()
 
         ESP_LOGI(TAG, "Socket accepted ip address: %s", addr_str);
 
-        
+        sendWelcomeMessage(m_Sock);
         int len;
         uint8_t rx_buffer[128];
     
@@ -124,7 +124,7 @@ void SocketServer::Listen()
             {
     
                 ESP_LOGD(TAG, "Received %d bytes.", len);
-                ProcessRx(rx_buffer, len);
+                processRx(m_Sock, rx_buffer, len);
             }
         } while (len > 0);
         
@@ -141,15 +141,15 @@ CLEAN_UP:
 void modbus_server_task(void *pvParameters)
 {
     ModbusServer MyModbusServer(53, (int) pvParameters);
-    MyModbusServer.Listen();
+    MyModbusServer.run();
 
     vTaskDelete(NULL);
 }
 
 void echo_server_task(void *pvParameters)
 {
-    EchoServer MyEchoServer((int) pvParameters);
-    MyEchoServer.Listen();
+    TelnetServer MyTelnetServer((int) pvParameters);
+    MyTelnetServer.run();
 
     vTaskDelete(NULL);
 }

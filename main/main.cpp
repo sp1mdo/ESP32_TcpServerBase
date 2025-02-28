@@ -10,8 +10,9 @@
 #include <thread>
 #include <iostream>
 
-#include "modbus.h"
-#include "server.h"
+#include "Modbus.hpp"
+#include "BaseServer.hpp"
+#include "mdns.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,9 +41,9 @@
    If you'd rather not, just change the below entries to strings with
    the config you want - ie #define EXAMPLE_WIFI_SSID "mywifissid"
 */
-#define EXAMPLE_ESP_WIFI_SSID CONFIG_ESP_WIFI_SSID
-#define EXAMPLE_ESP_WIFI_PASS CONFIG_ESP_WIFI_PASSWORD
-#define EXAMPLE_ESP_MAXIMUM_RETRY CONFIG_ESP_MAXIMUM_RETRY
+#define EXAMPLE_ESP_WIFI_SSID "Dzik"
+#define EXAMPLE_ESP_WIFI_PASS "MiliKapi17"
+#define EXAMPLE_ESP_MAXIMUM_RETRY 5
 
 #if CONFIG_ESP_WIFI_AUTH_OPEN
 #define ESP_WIFI_SCAN_AUTH_MODE_THRESHOLD WIFI_AUTH_OPEN
@@ -107,6 +108,15 @@ static void event_handler(void *arg, esp_event_base_t event_base,
         s_retry_num = 0;
         xEventGroupSetBits(s_wifi_event_group, WIFI_CONNECTED_BIT);
     }
+}
+
+void start_mdns_service()
+{
+    mdns_init();
+    mdns_hostname_set("ahu2040");
+    mdns_instance_name_set("ESP32 mDNS Device");
+
+    printf("mDNS started with hostname: %s\n", "ahu2040");
 }
 
 void wifi_init_sta(void)
@@ -176,6 +186,7 @@ void wifi_init_sta(void)
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(IP_EVENT, IP_EVENT_STA_GOT_IP, instance_got_ip));
     ESP_ERROR_CHECK(esp_event_handler_instance_unregister(WIFI_EVENT, ESP_EVENT_ANY_ID, instance_any_id));
     vEventGroupDelete(s_wifi_event_group);
+
 }
 
 extern "C" void app_main(void)
@@ -193,6 +204,7 @@ extern "C" void app_main(void)
 
     ESP_LOGI(TAG, "ESP_WIFI_MODE_STA");
     wifi_init_sta();
+    start_mdns_service();
 
     xTaskCreate(modbus_server_task, "tcp_server502", 4096, (void *)502, 5, NULL);
     xTaskCreate(modbus_server_task, "tcp_server503", 4096, (void *)503, 5, NULL);
